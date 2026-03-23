@@ -1,0 +1,57 @@
+name: Auto-Fix Error Reports
+
+on:
+  push:
+    branches:
+      - 'error-report/**'
+    paths:
+      - 'error_reports/*.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  triage-and-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Find new error report
+        id: find_report
+        run: |
+          REPORT=$(git diff --name-only HEAD~1 HEAD -- 'error_reports/*.json' | head -1)
+          echo "report_path=$REPORT" >> $GITHUB_OUTPUT
+          echo "Found report: $REPORT"
+
+      - name: Read error report
+        id: read_report
+        run: |
+          CONTENT=$(cat "${{ steps.find_report.outputs.report_path }}")
+          echo "report_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Claude Code — Analyze and Fix
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            An automated error report was filed from a FishFluencer device.
+            Analyze this error and propose a minimal, targeted fix.
+
+            Error report:
+            ${{ steps.read_report.outputs.report_content }}
+
+            Instructions:
+            1. Read the traceback and identify the root cause
+            2. Check the suggested_files for context
+            3. Propose a fix as a new PR against main
+            4. Include a clear PR description explaining the fix
+            5. Do NOT modify config files or secrets
+            6. Keep changes minimal and focused

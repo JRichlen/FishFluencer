@@ -1,0 +1,11 @@
+[Unit]
+Description=FishFluencer Image Purge
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mendel
+WorkingDirectory=/opt/fishfluencer
+ExecStart=/opt/fishfluencer/.venv/bin/python -c "from src.data.image_manager import ImageManager; from src.data.db import FishDB; mgr = ImageManager(); mgr.purge_expired(FishDB()); mgr.enforce_storage_limit()"
+StandardOutput=journal
+StandardError=journal
