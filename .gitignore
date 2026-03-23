@@ -33,3 +33,8 @@ models/*.tflite
 
 # Environment
 .env
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
