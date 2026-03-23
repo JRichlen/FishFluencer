@@ -10,11 +10,11 @@ Flow:
 """
 
 import json
+import logging
+import platform
+import subprocess
 import time
 import traceback
-import subprocess
-import platform
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional

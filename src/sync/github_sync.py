@@ -8,8 +8,8 @@ How it works:
   4. No SSH, VPN, or port-forwarding required — outbound HTTPS only
 """
 
-import subprocess
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional
 

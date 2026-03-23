@@ -5,8 +5,8 @@ Takes trajectories + detection metadata and produces human-readable
 behavior labels used in the text summaries sent to Claude.
 """
 
-import math
 import logging
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import List

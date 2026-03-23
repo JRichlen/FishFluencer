@@ -4,11 +4,16 @@ The IMX291 is a low-light sensor — ideal for tank lighting conditions.
 Connected through the Syntech USB-C adapter to the Coral Dev Board.
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +41,6 @@ class FishCamera:
 
     def open(self) -> None:
         """Initialize camera with V4L2 backend (Linux)."""
-        import cv2
-
         self._cap = cv2.VideoCapture(self.device_index, cv2.CAP_V4L2)
         if not self._cap.isOpened():
             raise RuntimeError(
@@ -70,8 +73,6 @@ class FishCamera:
 
     def save_snapshot(self, output_dir: Path, prefix: str = "snapshot") -> Path:
         """Capture and save a single JPEG locally. Returns file path."""
-        import cv2
-
         result = self.capture_frame()
         output_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{prefix}_{int(result.timestamp)}.jpg"

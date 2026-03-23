@@ -12,10 +12,10 @@ Ties together all subsystems:
   - Error reporting
 """
 
+import logging
+import signal
 import sys
 import time
-import signal
-import logging
 
 import schedule
 

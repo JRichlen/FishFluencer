@@ -1,8 +1,8 @@
 """YAML config loader with environment variable overrides."""
 
+import logging
 import os
 import re
-import logging
 from pathlib import Path
 
 import yaml

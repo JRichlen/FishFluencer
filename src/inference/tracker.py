@@ -5,8 +5,8 @@ Assigns stable IDs to detected fish so we can track individual movement
 patterns over time. Uses a simple centroid-distance approach.
 """
 
-import math
 import logging
+import math
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import List

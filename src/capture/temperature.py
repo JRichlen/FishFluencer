@@ -11,8 +11,8 @@ Prerequisites (run once):
   sudo modprobe w1-therm
 """
 
-import time
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
