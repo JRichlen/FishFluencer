@@ -4,7 +4,72 @@ import os
 
 import pytest
 
-from utils.config import _resolve_env_vars, load_config
+from utils.config import _resolve_env_vars, load_config, load_dotenv
+
+
+class TestLoadDotenv:
+    def test_loads_key_value(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("MY_TEST_VAR=hello\n")
+        monkeypatch.delenv("MY_TEST_VAR", raising=False)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ["MY_TEST_VAR"] == "hello"
+        monkeypatch.delenv("MY_TEST_VAR", raising=False)
+
+    def test_skips_comments_and_blanks(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("# comment\n\nVALID_VAR=yes\n")
+        monkeypatch.delenv("VALID_VAR", raising=False)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ["VALID_VAR"] == "yes"
+        monkeypatch.delenv("VALID_VAR", raising=False)
+
+    def test_strips_double_quotes(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text('QUOTED_VAR="some value"\n')
+        monkeypatch.delenv("QUOTED_VAR", raising=False)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ["QUOTED_VAR"] == "some value"
+        monkeypatch.delenv("QUOTED_VAR", raising=False)
+
+    def test_strips_single_quotes(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("SQ_VAR='single quoted'\n")
+        monkeypatch.delenv("SQ_VAR", raising=False)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ["SQ_VAR"] == "single quoted"
+        monkeypatch.delenv("SQ_VAR", raising=False)
+
+    def test_does_not_override_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("EXISTING_VAR", "original")
+        env_file = tmp_path / ".env"
+        env_file.write_text("EXISTING_VAR=overridden\n")
+
+        load_dotenv(str(env_file))
+
+        assert os.environ["EXISTING_VAR"] == "original"
+
+    def test_missing_file_is_noop(self):
+        load_dotenv("/nonexistent/.env")
+
+    def test_skips_lines_without_equals(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("NOEQ\nGOOD=val\n")
+        monkeypatch.delenv("GOOD", raising=False)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ.get("NOEQ") is None
+        assert os.environ["GOOD"] == "val"
+        monkeypatch.delenv("GOOD", raising=False)
 
 
 class TestResolveEnvVars:
@@ -61,3 +126,24 @@ class TestLoadConfig:
 
         config = load_config(str(config_file))
         assert config["api_key"] == "sk-test-123"
+
+    def test_load_config_reads_dotenv(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DOTENV_TEST_KEY", raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text("DOTENV_TEST_KEY=from-dotenv\n")
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text('val: "${DOTENV_TEST_KEY}"\n')
+
+        config = load_config(str(config_file))
+        assert config["val"] == "from-dotenv"
+        monkeypatch.delenv("DOTENV_TEST_KEY", raising=False)
+
+    def test_load_config_env_overrides_dotenv(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PRIORITY_KEY", "from-env")
+        env_file = tmp_path / ".env"
+        env_file.write_text("PRIORITY_KEY=from-dotenv\n")
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text('val: "${PRIORITY_KEY}"\n')
+
+        config = load_config(str(config_file))
+        assert config["val"] == "from-env"
