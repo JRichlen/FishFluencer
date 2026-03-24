@@ -91,11 +91,18 @@ existing GitHub sync mechanism:
 2. Trigger the `deploy-secret.yml` workflow (via the Actions tab or the API)
 3. On the next sync cycle, the device picks up the rotated value
 
-This works because the sync agent already pulls from GitHub periodically. The
-workflow writes an **encrypted** secret bundle that only the device can read.
+This works because the sync agent already pulls from GitHub periodically. A
+workflow can write an **encrypted** secret bundle that only the device can
+decrypt using a key generated during initial setup.
 
-> **Note:** The device must have a pre-shared decryption key created during
-> initial setup. See the setup in `scripts/setup.sh`.
+To set this up:
+
+1. Generate an encryption key on-device during initial provisioning and store
+   it at `/etc/fishfluencer/secret.key` (mode `0600`)
+2. Share the corresponding public key or passphrase with your GitHub Actions
+   workflow via a repository secret
+3. The workflow encrypts the new API key, commits the bundle, and the sync
+   agent decrypts it on the next pull
 
 ### Option C — Secure environment endpoint
 

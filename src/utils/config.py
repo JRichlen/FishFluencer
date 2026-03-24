@@ -71,7 +71,10 @@ def load_config(config_path: str = "config/default.yaml") -> dict:
     # Load .env relative to the config file's parent directory
     config_dir = Path(config_path).resolve().parent
     for candidate in [config_dir / ".env", config_dir.parent / ".env"]:
-        load_dotenv(str(candidate))
+        if candidate.is_file():
+            load_dotenv(str(candidate))
+            logger.debug("Loaded .env from %s", candidate)
+            break
 
     path = Path(config_path)
     if not path.exists():
