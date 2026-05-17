@@ -61,6 +61,7 @@ Setup is broken into sub-procedures. Follow each in order:
 2. **[Python Environment Setup](docs/setup-python.md)** — Clone repo, create venv, install dependencies
 3. **[Sensor Wiring & Setup](docs/setup-sensors.md)** — Verify camera and temperature sensor connections
 4. **[Service Configuration](docs/setup-services.md)** — Set API key, configure fish profile, register systemd services, start the application
+5. **[Secrets Management](docs/secrets.md)** — How API keys are stored, rotated, and kept out of the repo
 
 ### Quick Start (automated)
 
