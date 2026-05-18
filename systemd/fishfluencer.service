@@ -1,0 +1,19 @@
+[Unit]
+Description=FishFluencer AI Fish Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mendel
+WorkingDirectory=/opt/fishfluencer
+# Override via: sudo systemctl edit fishfluencer
+# Then add: Environment=ANTHROPIC_API_KEY=sk-ant-...
+ExecStart=/opt/fishfluencer/.venv/bin/python -m src.main config/default.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

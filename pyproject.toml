@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fishfluencer"
+version = "0.1.0"
+description = "Privacy-first edge-AI fish surveillance + social media poster for Coral Dev Board"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "FishFluencer contributors" }]
+dependencies = [
+    "anthropic>=0.40",
+    "PyYAML>=6.0",
+    "schedule>=1.2",
+    "numpy>=1.24",
+    "Flask>=3.0",
+]
+
+[project.optional-dependencies]
+device = [
+    "opencv-python>=4.8",
+]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+fishfluencer = "src.main:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

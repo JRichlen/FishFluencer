@@ -1,0 +1,248 @@
+"""
+FishFluencer main entry point.
+
+Ties together camera capture, Edge TPU inference, fish tracking,
+behavior analysis, temperature monitoring, text summary generation,
+Claude API post generation, image lifecycle, error reporting, and
+the local HDMI dashboard.
+
+Run via systemd:
+    python -m src.main config/default.yaml
+"""
+
+import logging
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+import schedule
+
+from src.capture.camera import FishCamera
+from src.capture.temperature import DS18B20
+from src.data.db import FishDB
+from src.data.image_manager import ImageManager
+from src.data.summarizer import BehaviorSummarizer
+from src.display.dashboard import Dashboard
+from src.inference.behavior import BehaviorAnalyzer
+from src.inference.detector import FishDetector
+from src.inference.tracker import CentroidTracker
+from src.social.post_generator import PostGenerator
+from src.social.publisher import make_publisher
+from src.sync.log_pusher import ErrorLogPusher
+from src.utils.config import load_config, load_fish_profiles
+from src.utils.logging import configure_logging
+
+logger = logging.getLogger("fishfluencer")
+
+
+class FishFluencer:
+    def __init__(self, config_path: str = "config/default.yaml"):
+        self.config = load_config(config_path)
+
+        profiles_path = (
+            Path(config_path).parent / "fish_profiles.yaml"
+        )
+        self.fish_profiles = (
+            load_fish_profiles(profiles_path)
+            if profiles_path.exists() else {}
+        )
+
+        self.db = FishDB(self.config.get("db_path", "data/fishfluencer.db"))
+        self.camera = FishCamera(**self.config.get("camera", {}))
+        self.detector = self._init_detector()
+        self.tracker = CentroidTracker(**self.config.get("tracker", {}))
+        self.analyzer = BehaviorAnalyzer(**self.config.get("behavior", {}))
+        self.temp_sensor = self._init_temp_sensor()
+        self.image_mgr = ImageManager(**self.config.get("images", {}))
+        self.summarizer = BehaviorSummarizer(self.db, self.fish_profiles)
+        self.post_gen = PostGenerator(
+            api_key=os.environ.get(
+                "ANTHROPIC_API_KEY",
+                self.config.get("anthropic_api_key", ""),
+            ),
+            fish_profiles=self.fish_profiles,
+            model=self.config.get("anthropic_model", "claude-sonnet-4-6"),
+        )
+        self.error_pusher = ErrorLogPusher(
+            **self.config.get("error_reporting", {})
+        )
+        dashboard_cfg = dict(self.config.get("dashboard", {}))
+        dashboard_enabled = dashboard_cfg.pop("enabled", True)
+        self.dashboard = (
+            Dashboard(self.db, **dashboard_cfg) if dashboard_enabled else None
+        )
+        self._running = False
+
+    def _init_detector(self):
+        """Initialize the Edge TPU detector. If unavailable (e.g. running
+        on a dev machine without pycoral), log a warning and return None
+        so the rest of the orchestrator still loads.
+        """
+        try:
+            return FishDetector(**self.config.get("detector", {}))
+        except Exception as e:  # pycoral missing, model file missing, etc.
+            logger.warning(
+                "FishDetector unavailable (%s) — inference disabled. "
+                "On a real Coral device this is a hard error; on a dev "
+                "machine it's expected.", e
+            )
+            return None
+
+    def _init_temp_sensor(self):
+        try:
+            return DS18B20(self.config.get("temp_sensor_id"))
+        except FileNotFoundError as e:
+            logger.warning(
+                "DS18B20 not detected (%s) — temperature logging disabled.", e
+            )
+            return None
+
+    def start(self):
+        logger.info("=== FishFluencer starting ===")
+        self._running = True
+        signal.signal(signal.SIGTERM, self._shutdown)
+        signal.signal(signal.SIGINT, self._shutdown)
+
+        if self.dashboard:
+            self.dashboard.start()
+
+        try:
+            self.camera.open()
+        except Exception as e:
+            logger.warning(
+                "Camera unavailable (%s) — capture loop will be a no-op. "
+                "Scheduler still runs.", e
+            )
+
+        post_times = self.config.get("post_times", ["09:00", "17:00"])
+        for t in post_times:
+            schedule.every().day.at(t).do(self._generate_and_post)
+
+        schedule.every(5).minutes.do(self._read_temperature)
+        schedule.every(15).minutes.do(self._take_snapshot)
+        schedule.every(1).hours.do(self._purge_images)
+
+        fps_target = self.config.get("inference_fps", 5)
+        frame_interval = 1.0 / fps_target
+
+        try:
+            while self._running:
+                loop_start = time.time()
+
+                try:
+                    self._process_frame()
+                except Exception as e:
+                    logger.error("Frame processing error: %s", e)
+                    self.error_pusher.report_error(
+                        e, context={"phase": "frame_processing"}
+                    )
+
+                schedule.run_pending()
+
+                elapsed = time.time() - loop_start
+                sleep_time = frame_interval - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+        except Exception as e:
+            logger.critical("Fatal error: %s", e)
+            self.error_pusher.report_error(e, context={"phase": "main_loop"})
+        finally:
+            self.camera.close()
+            logger.info("=== FishFluencer stopped ===")
+
+    def _process_frame(self):
+        if self.detector is None:
+            time.sleep(0.5)
+            return
+        try:
+            result = self.camera.capture_frame()
+        except RuntimeError:
+            return
+        detections = self.detector.detect(result.frame)
+        tracked = self.tracker.update(detections)
+        behaviors = self.analyzer.analyze(tracked)
+        for event in behaviors:
+            self.db.log_behavior(event)
+
+    def _take_snapshot(self):
+        if self.detector is None:
+            return
+        try:
+            result = self.camera.capture_frame()
+        except RuntimeError as e:
+            logger.warning("Snapshot skipped: %s", e)
+            return
+        detections = self.detector.detect(result.frame)
+        description = self.image_mgr.describe_frame(result.frame, detections)
+        filepath = self.camera.save_snapshot(
+            self.image_mgr.storage_dir, prefix="scheduled"
+        )
+        self.db.register_snapshot(
+            str(filepath),
+            description=description,
+            purge_hours=self.config.get("image_retention_hours", 24.0),
+        )
+
+    def _read_temperature(self):
+        if self.temp_sensor is None:
+            return
+        try:
+            reading = self.temp_sensor.read()
+            self.db.log_temperature(reading)
+            logger.debug("Temp: %.1f°F", reading.fahrenheit)
+        except Exception as e:
+            logger.warning("Temp read failed: %s", e)
+
+    def _generate_and_post(self):
+        try:
+            summary = self.summarizer.generate_summary(hours=12.0)
+            logger.info("Summary generated (%d chars)", len(summary))
+
+            platforms = self.config.get("platforms", ["twitter"])
+            fish_name = self.config.get("primary_poster", None)
+
+            for platform in platforms:
+                post = self.post_gen.generate_post(
+                    summary=summary,
+                    platform=platform,
+                    character_name=fish_name,
+                )
+                logger.info("[%s] Post: %s...", platform, post[:100])
+
+                publisher = make_publisher(platform)
+                try:
+                    status = publisher.publish(platform, post)
+                    self.db.log_post(platform, post, summary, status=status)
+                except Exception as pub_err:
+                    logger.error("Publish failed (%s): %s", platform, pub_err)
+                    self.db.log_post(
+                        platform, post, summary, status=f"failed:{pub_err}"
+                    )
+
+        except Exception as e:
+            logger.error("Post generation failed: %s", e)
+            self.error_pusher.report_error(
+                e, context={"phase": "post_generation"}
+            )
+
+    def _purge_images(self):
+        self.image_mgr.purge_expired(self.db)
+        self.image_mgr.enforce_storage_limit()
+
+    def _shutdown(self, signum, frame):
+        logger.info("Shutdown signal received (%s)", signum)
+        self._running = False
+
+
+def main():
+    configure_logging(os.environ.get("FISHFLUENCER_LOG_LEVEL", "INFO"))
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config/default.yaml"
+    app = FishFluencer(config_path)
+    app.start()
+
+
+if __name__ == "__main__":
+    main()

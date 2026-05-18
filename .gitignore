@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime data
+data/
+logs/*
+!logs/.gitkeep
+
+# Snapshots — privacy critical, never commit
+data/snapshots/
+
+# Local secrets (defense in depth — real secrets live in systemd env)
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

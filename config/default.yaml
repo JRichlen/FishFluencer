@@ -1,0 +1,81 @@
+# === FishFluencer Configuration ===
+
+# Anthropic API (text-only calls — never sends images)
+anthropic_api_key: "${ANTHROPIC_API_KEY}"
+anthropic_model: "claude-sonnet-4-6"
+
+# Camera (Arducam IMX291 via USB)
+camera:
+  device_index: 0
+  resolution: [1920, 1080]
+  fps: 15
+  warmup_seconds: 2.0
+
+# Edge TPU model
+detector:
+  model_path: "models/detect_fish_edgetpu.tflite"
+  labels_path: "models/labels.txt"
+  confidence_threshold: 0.5
+
+# Tracker
+tracker:
+  max_missing_frames: 30
+  max_distance: 120.0
+  trajectory_length: 300
+
+# Behavior analysis
+behavior:
+  darting_speed_threshold: 40.0
+  resting_speed_threshold: 2.0
+  glass_surf_edge_margin: 80
+  frame_width: 1920
+  frame_height: 1080
+  min_behavior_frames: 10
+
+# Temperature sensor (auto-detect first DS18B20)
+temp_sensor_id: null
+
+# Image privacy
+images:
+  storage_dir: "data/snapshots"
+  retention_hours: 24.0
+  max_storage_mb: 500.0
+
+image_retention_hours: 24.0
+
+# Inference loop
+inference_fps: 5
+
+# Posting schedule (24h, local time)
+post_times:
+  - "09:00"
+  - "17:00"
+
+# Target platforms
+platforms:
+  - twitter
+
+# Fish character who writes the posts
+primary_poster: "Sir Bubbles"
+
+# Database
+db_path: "data/fishfluencer.db"
+
+# Local HTTP dashboard
+dashboard:
+  host: "127.0.0.1"
+  port: 8080
+  enabled: true
+
+# Error reporting (OTA + auto-fix loop)
+error_reporting:
+  repo_dir: "/opt/fishfluencer"
+  error_dir: "error_reports"
+  remote_branch_prefix: "error-report"
+
+# OTA sync
+ota:
+  repo_dir: "/opt/fishfluencer"
+  branch: "main"
+  service_name: "fishfluencer.service"
+  post_update_script: "scripts/install_deps.sh"
