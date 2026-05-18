@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   test:
@@ -34,48 +33,5 @@ jobs:
       - name: Lint with ruff
         run: ruff check src tests
 
-      - name: Run tests (with full output)
-        id: pytest
-        run: |
-          set +e
-          {
-            echo "=== Python / pip ==="
-            python --version
-            pip --version
-            echo
-            echo "=== sys.path ==="
-            python -c "import sys; [print(p) for p in sys.path]"
-            echo
-            echo "=== import probe ==="
-            python -c "from src.data.db import FishDB; print('src.data.db import OK')" 2>&1
-            python -c "from src.social.templates import SYSTEM_PREAMBLE; print('src.social.templates import OK')" 2>&1
-            echo
-            echo "=== pytest --collect-only ==="
-            python -m pytest --collect-only -v
-            echo
-            echo "=== pytest run ==="
-            python -m pytest -v --tb=long -ra -p no:cacheprovider
-          } 2>&1 | tee /tmp/all.log
-          status=${PIPESTATUS[0]}
-          echo "PYTEST_EXIT=$status" >> "$GITHUB_OUTPUT"
-          exit "$status"
-
-      - name: Comment failure log on PR
-        if: failure() && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo "## CI failure — Python ${{ matrix.python-version }}"
-            echo "exit=${{ steps.pytest.outputs.PYTEST_EXIT }}"
-            echo
-            echo '<details><summary>Full diagnostic log (last 300 lines)</summary>'
-            echo
-            echo '```'
-            tail -300 /tmp/all.log
-            echo '```'
-            echo '</details>'
-          } > /tmp/comment.md
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
-            --body-file /tmp/comment.md
+      - name: Run tests
+        run: pytest -v --tb=long

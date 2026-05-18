@@ -5,13 +5,13 @@ __pycache__/
 .venv/
 venv/
 
-# Runtime data
-data/
-logs/*
-!logs/.gitkeep
+# Runtime data (anchored to repo root — do NOT match src/data/)
+/data/
+/logs/*
+!/logs/.gitkeep
 
 # Snapshots — privacy critical, never commit
-data/snapshots/
+/data/snapshots/
 
 # Local secrets (defense in depth — real secrets live in systemd env)
 .env
