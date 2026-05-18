@@ -35,22 +35,36 @@ jobs:
         run: ruff check src tests
 
       - name: Pytest — collection only
+        if: always()
         run: |
-          set -x
-          python -m pytest --collect-only -q || {
-            echo "::error::pytest collection failed with exit $?"
-            exit 1
-          }
+          set +e
+          python -m pytest --collect-only -v 2>&1 | tee /tmp/collect.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "## Pytest collect-only (status=$status)"
+            echo ""
+            echo '```'
+            cat /tmp/collect.log
+            echo '```'
+            echo ""
+            echo "### sys.path probe"
+            python -c "import sys; [print(p) for p in sys.path]" 2>&1 || true
+            echo ""
+            echo "### import probe"
+            python -c "from src.data.db import FishDB; print('src import OK')" 2>&1 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
-      - name: Pytest — run tests (with full output capture)
+      - name: Pytest — run tests
         run: |
-          set -x
+          set +e
           python -m pytest -v --tb=long -ra -p no:cacheprovider 2>&1 | tee /tmp/pytest.log
           status=${PIPESTATUS[0]}
-          echo "::notice::pytest exit code = $status"
-          if [ "$status" -ne 0 ]; then
-            echo "=== pytest.log (last 200 lines) ==="
+          {
+            echo "## Pytest run (status=$status)"
+            echo ""
+            echo '```'
             tail -200 /tmp/pytest.log
-            echo "::error::pytest failed with exit $status"
-            exit "$status"
-          fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
