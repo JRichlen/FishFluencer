@@ -17,31 +17,39 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Diagnostics — pre-install
+        run: |
+          set -x
+          python --version
+          pip --version
+          pwd
+          ls -la
+          test -f requirements.txt && echo "requirements.txt exists" || echo "MISSING requirements.txt"
+          test -f pyproject.toml && echo "pyproject.toml exists" || echo "MISSING pyproject.toml"
+          test -d tests && echo "tests/ exists" || echo "MISSING tests/"
+          test -d src && echo "src/ exists" || echo "MISSING src/"
+
       - name: Install dependencies
         run: |
+          set -x
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest ruff
-
-      - name: Diagnostics
-        run: |
-          python --version
           pip list
-          locale
-          echo "--- repo layout ---"
-          ls -la
-          echo "--- tests/ ---"
-          ls -la tests/
 
       - name: Lint with ruff
-        run: ruff check src tests
+        run: |
+          set -x
+          ruff check src tests
 
       - name: Run tests
-        run: pytest -v --tb=long -ra
+        run: |
+          set -x
+          pytest -v --tb=long -ra
