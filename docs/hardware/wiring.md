@@ -41,9 +41,10 @@ use are listed; everything else stays unconnected.
 | 6 | GND | DS18B20 GND |
 | 7 | GPIO (1-Wire data, kernel default `w1-gpio`) | DS18B20 DQ |
 
-> Pin 7 is the kernel default for `w1-gpio`. If you change the overlay
-> to a different pin, update `config/default.yaml` (or device-tree
-> overlay) accordingly.
+> Pin 7 is the kernel default for `w1-gpio`. Changing the pin is a
+> device-tree-overlay change, not an application-config change —
+> `config/default.yaml` only carries the sensor's 1-Wire ROM ID
+> (`temp_sensor_id`), not the GPIO assignment.
 
 ---
 
@@ -152,7 +153,7 @@ Tick before you start `assembly.md`:
 - [ ] DS18B20 waterproof probe (3-wire)
 - [ ] 4.7 kΩ resistor (1/4 W is fine)
 - [ ] 3 × female-to-female jumper wires (or solder direct)
-- [ ] HDMI cable / adapter — confirmed against Coral revision (§4)
+- [ ] HDMI cable / adapter — confirmed against Coral revision (§5)
 - [ ] Hamityson 7" Mini-HDMI display
 - [ ] 5 V / 1.5 A PSU for display
 - [ ] Ethernet cable **or** confirmed Wi-Fi credentials

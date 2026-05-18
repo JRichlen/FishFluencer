@@ -55,8 +55,11 @@ post_times:
 platforms:
   - twitter
 
-# Fish character who writes the posts
-primary_poster: "Sir Bubbles"
+# Fish character who writes the posts.
+# Must match a top-level key in config/fish_profiles.yaml (e.g.
+# `betta`, `goldfish`, `tetra`, `fish`) — PostGenerator looks the
+# character up by profile key, not by display name.
+primary_poster: "betta"
 
 # Database
 db_path: "data/fishfluencer.db"

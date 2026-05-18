@@ -8,8 +8,8 @@ on:
       - 'error_reports/*.json'
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: write       # claude-code-action pushes a fix branch
+  pull-requests: write  # ...and opens a PR for it
   issues: write
 
 jobs:

@@ -247,22 +247,10 @@ git config user.name "FishFluencer Device"
 
 ## 9. Anthropic API key
 
-```bash
-sudo systemctl edit fishfluencer    # creates an override file
-```
-
-Paste:
-
-```ini
-[Service]
-Environment=ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Save & exit, then:
-
-```bash
-sudo systemctl daemon-reload
-```
+For the smoke test in step 11 you can `export ANTHROPIC_API_KEY=...`
+in the shell directly. The persistent systemd override is set in
+step 12 after the unit file has been installed — `systemctl edit
+fishfluencer` only works once the unit exists on disk.
 
 **Never** commit the key to the repo. The repo writes only sanitized
 text — see `ARCHITECTURE.md` § Privacy Architecture Summary.
@@ -297,7 +285,8 @@ ANTHROPIC_API_KEY=sk-ant-... python3 -m src.main config/default.yaml
 Watch for, in order:
 
 1. `Camera warmup (2.0s)...` then `Camera ready.`
-2. `Temp: 22.1°F` (or whatever your tank is)
+2. `Temp: 72.1°F` (or whatever your tank is — `DS18B20.read()` logs
+   Fahrenheit; a normal 22 °C tank reads ~71.6 °F)
 3. Periodic detection log lines.
 4. At the next scheduled `post_times`, `Summary generated (N chars)`
    and a `[twitter] Post: ...` line.
@@ -311,6 +300,27 @@ If all four show, kill it with Ctrl-C — the smoke test passed.
 ```bash
 cd /opt/fishfluencer
 sudo cp systemd/*.service systemd/*.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+Now the unit exists on disk, so persist the Anthropic API key as an
+override (this is the production replacement for the inline
+`ANTHROPIC_API_KEY=...` you used during step 11):
+
+```bash
+sudo systemctl edit fishfluencer        # creates the override file
+```
+
+Paste:
+
+```ini
+[Service]
+Environment=ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Save & exit, then enable and start everything:
+
+```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now fishfluencer.service
 sudo systemctl enable --now fishfluencer-sync.timer

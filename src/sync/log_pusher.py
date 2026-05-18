@@ -16,12 +16,42 @@ Flow:
 import json
 import logging
 import platform
+import re
 import subprocess
 import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
+
+# Patterns that look like secrets. Each is replaced with [REDACTED].
+# We err on the side of over-redaction — the auto-fix agent can still
+# work from the redacted form, and the report gets pushed to a public
+# branch.
+_SECRET_PATTERNS = [
+    # Anthropic / OpenAI / GitHub-style tokens
+    re.compile(r"sk-ant-[A-Za-z0-9_\-]{10,}"),
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
+    # Generic bearer tokens
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{16,}"),
+    # AWS keys
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    # JWT-like
+    re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),
+    # `password=...` / `token=...` / `api_key=...` query/kwargs
+    re.compile(r"(?i)(password|token|api_key|secret)\s*[=:]\s*['\"]?[^\s'\"]+"),
+    # Absolute user paths
+    re.compile(r"/home/[^/\s]+"),
+    re.compile(r"/Users/[^/\s]+"),
+]
+
+
+def _redact(s: str) -> str:
+    for pat in _SECRET_PATTERNS:
+        s = pat.sub("[REDACTED]", s)
+    return s
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +82,13 @@ class ErrorLogPusher:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": {
                 "type": type(exception).__name__,
-                "message": str(exception),
-                "traceback": traceback.format_exception(
-                    type(exception), exception, exception.__traceback__
-                ),
+                "message": _redact(str(exception)),
+                "traceback": [
+                    _redact(line)
+                    for line in traceback.format_exception(
+                        type(exception), exception, exception.__traceback__
+                    )
+                ],
             },
             "system": {
                 "platform": platform.platform(),

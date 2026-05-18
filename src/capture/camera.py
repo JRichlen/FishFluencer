@@ -68,9 +68,24 @@ class FishCamera:
         )
 
     def save_snapshot(self, output_dir: Path, prefix: str = "snapshot") -> Path:
+        """Capture a fresh frame and write it as a JPEG.
+
+        Use `save_frame()` instead when you already have a `FrameResult`
+        and need the JPEG on disk to match it byte-for-byte (e.g. when
+        the description is derived from that exact frame).
+        """
+        result = self.capture_frame()
+        return self.save_frame(result, output_dir, prefix=prefix)
+
+    def save_frame(
+        self,
+        result: FrameResult,
+        output_dir: Path,
+        prefix: str = "snapshot",
+    ) -> Path:
+        """Persist an already-captured frame as a JPEG."""
         import cv2
 
-        result = self.capture_frame()
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{prefix}_{int(result.timestamp)}.jpg"

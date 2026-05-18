@@ -41,9 +41,12 @@ class FishFluencer:
     def __init__(self, config_path: str = "config/default.yaml"):
         self.config = load_config(config_path)
 
-        profiles_path = (
-            Path(config_path).parent / "fish_profiles.yaml"
-        )
+        config_dir = Path(config_path).parent
+        schedules_path = config_dir / "schedules.yaml"
+        if schedules_path.exists():
+            self.config.update(load_config(schedules_path))
+
+        profiles_path = config_dir / "fish_profiles.yaml"
         self.fish_profiles = (
             load_fish_profiles(profiles_path)
             if profiles_path.exists() else {}
@@ -120,9 +123,12 @@ class FishFluencer:
         for t in post_times:
             schedule.every().day.at(t).do(self._generate_and_post)
 
-        schedule.every(5).minutes.do(self._read_temperature)
-        schedule.every(15).minutes.do(self._take_snapshot)
-        schedule.every(1).hours.do(self._purge_images)
+        temp_min = self.config.get("temperature_interval_minutes", 5)
+        snap_min = self.config.get("snapshot_interval_minutes", 15)
+        purge_min = self.config.get("purge_interval_minutes", 60)
+        schedule.every(temp_min).minutes.do(self._read_temperature)
+        schedule.every(snap_min).minutes.do(self._take_snapshot)
+        schedule.every(purge_min).minutes.do(self._purge_images)
 
         fps_target = self.config.get("inference_fps", 5)
         frame_interval = 1.0 / fps_target
@@ -177,8 +183,8 @@ class FishFluencer:
             return
         detections = self.detector.detect(result.frame)
         description = self.image_mgr.describe_frame(result.frame, detections)
-        filepath = self.camera.save_snapshot(
-            self.image_mgr.storage_dir, prefix="scheduled"
+        filepath = self.camera.save_frame(
+            result, self.image_mgr.storage_dir, prefix="scheduled"
         )
         self.db.register_snapshot(
             str(filepath),
