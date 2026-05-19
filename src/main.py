@@ -23,7 +23,7 @@ from src.capture.camera import FishCamera
 from src.capture.temperature import DS18B20
 from src.data.db import FishDB
 from src.data.image_manager import ImageManager
-from src.data.summarizer import BehaviorSummarizer
+from src.data.summarizer import AlertSummarizer, BehaviorSummarizer
 from src.display.dashboard import Dashboard
 from src.inference.behavior import BehaviorAnalyzer
 from src.inference.detector import FishDetector
@@ -70,15 +70,30 @@ class FishFluencer:
         self.db = FishDB(self.config.get("db_path", "data/fishfluencer.db"))
         self.camera = FishCamera(**self.config.get("camera", {}))
         self.detector = self._init_detector()
-        self.tracker = CentroidTracker(**self.config.get("tracker", {}))
+
+        # Tracker — wire state persistence so subject IDs survive a
+        # systemd restart.
+        tracker_cfg = dict(self.config.get("tracker", {}))
+        tracker_cfg.setdefault(
+            "state_path",
+            self.config.get("tracker_state_path", "data/tracker_state.json"),
+        )
+        self.tracker = CentroidTracker(**tracker_cfg)
+
+        # Analyzer — span emission model, picks up checkpoint_interval
+        # from the same config block.
         self.analyzer = BehaviorAnalyzer(
             **self.config.get("behavior", {}), mode=self.mode
         )
         self.temp_sensor = self._init_temp_sensor()
         self.image_mgr = ImageManager(**self.config.get("images", {}))
         self.summarizer = BehaviorSummarizer(
-            self.db, self.profiles, mode=self.mode
+            self.db,
+            self.profiles,
+            mode=self.mode,
+            checkpoint_interval_seconds=self.analyzer.checkpoint_interval,
         )
+        self.alert_summarizer = AlertSummarizer(self.db, self.profiles)
         self.post_gen = PostGenerator(
             api_key=os.environ.get(
                 "ANTHROPIC_API_KEY",
@@ -96,6 +111,20 @@ class FishFluencer:
         self.dashboard = (
             Dashboard(self.db, **dashboard_cfg) if dashboard_enabled else None
         )
+
+        # Heat-stroke alert config + cooldown bookkeeping.
+        alert_cfg = self.config.get("heat_stroke_alert", {})
+        self.heat_alert_enabled = bool(alert_cfg.get("enabled", False))
+        self.heat_alert_threshold_f = float(
+            alert_cfg.get("threshold_f", 85.0)
+        )
+        self.heat_alert_cooldown_seconds = float(
+            alert_cfg.get("cooldown_minutes", 30.0)
+        ) * 60
+        self._last_heat_alert_ts: float = 0.0
+        self._tracker_save_ts: float = time.time()
+        self._tracker_save_interval_seconds = 60.0
+
         self._running = False
 
     def _init_detector(self):
@@ -167,6 +196,16 @@ class FishFluencer:
 
                 schedule.run_pending()
 
+                # Periodically persist tracker state so subject IDs
+                # survive a restart. Cheap (writes ~hundreds of bytes
+                # of JSON), so do it every minute by default.
+                if (
+                    time.time() - self._tracker_save_ts
+                    >= self._tracker_save_interval_seconds
+                ):
+                    self.tracker.save_state()
+                    self._tracker_save_ts = time.time()
+
                 elapsed = time.time() - loop_start
                 sleep_time = frame_interval - elapsed
                 if sleep_time > 0:
@@ -176,6 +215,11 @@ class FishFluencer:
             logger.critical("Fatal error: %s", e)
             self.error_pusher.report_error(e, context={"phase": "main_loop"})
         finally:
+            # Final flush so the next start picks up the latest IDs.
+            try:
+                self.tracker.save_state()
+            except Exception as e:
+                logger.warning("Tracker state save failed: %s", e)
             self.camera.close()
             logger.info("=== FishFluencer stopped ===")
 
@@ -228,6 +272,70 @@ class FishFluencer:
             logger.debug("Temp: %.1f°F", reading.fahrenheit)
         except Exception as e:
             logger.warning("Temp read failed: %s", e)
+            return
+
+        self._check_heat_stroke(reading)
+
+    def _check_heat_stroke(self, reading) -> None:
+        """If the ambient temperature crosses the configured threshold,
+        fire a high-priority alert post. Subject to a cooldown so a
+        sustained heat event doesn't spam the social feed."""
+        if not self.heat_alert_enabled:
+            return
+        if reading.fahrenheit < self.heat_alert_threshold_f:
+            return
+        now = time.time()
+        if now - self._last_heat_alert_ts < self.heat_alert_cooldown_seconds:
+            logger.info(
+                "Heat-stroke threshold crossed (%.1f°F ≥ %.1f°F) but "
+                "still in cooldown — skipping alert.",
+                reading.fahrenheit, self.heat_alert_threshold_f,
+            )
+            return
+        self._last_heat_alert_ts = now
+        logger.warning(
+            "HEAT-STROKE ALERT: %.1f°F ≥ %.1f°F — generating alert post",
+            reading.fahrenheit, self.heat_alert_threshold_f,
+        )
+        self._generate_alert_post(reading)
+
+    def _generate_alert_post(self, reading) -> None:
+        """Bypass the periodic 12-hour summary and post an immediate
+        focused alert. Uses the same publisher path so configured
+        social platforms get the alert."""
+        try:
+            summary = self.alert_summarizer.generate_alert_summary(
+                reading, self.heat_alert_threshold_f
+            )
+            platforms = self.config.get("platforms", ["twitter"])
+            character_name = self.config.get("primary_poster", None)
+
+            for platform in platforms:
+                post = self.post_gen.generate_post(
+                    summary=summary,
+                    platform=platform,
+                    character_name=character_name,
+                )
+                logger.warning("[%s] ALERT post: %s...", platform, post[:100])
+                publisher = make_publisher(platform)
+                try:
+                    status = publisher.publish(platform, post)
+                    self.db.log_post(
+                        platform, post, summary, status=f"alert:{status}"
+                    )
+                except Exception as pub_err:
+                    logger.error(
+                        "Alert publish failed (%s): %s", platform, pub_err
+                    )
+                    self.db.log_post(
+                        platform, post, summary,
+                        status=f"alert_failed:{pub_err}",
+                    )
+        except Exception as e:
+            logger.error("Alert post generation failed: %s", e)
+            self.error_pusher.report_error(
+                e, context={"phase": "alert_post"}
+            )
 
     def _generate_and_post(self):
         try:

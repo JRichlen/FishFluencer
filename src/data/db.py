@@ -188,6 +188,48 @@ class FishDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_behavior_spans(self, hours: float = 12.0) -> List[dict]:
+        """Aggregate behavior events into per-(subject_id, behavior) spans
+        with first/last timestamps so the summarizer can render
+        sustained-behavior durations.
+
+        Note: this groups across non-contiguous spans of the same
+        behavior — if a dog rests, paces, then rests again, both
+        resting periods are collapsed. That's a feature for the
+        "total time spent doing X" framing the summarizer uses; for
+        per-occurrence detail use a more granular query on the raw
+        ``behavior_log`` table.
+        """
+        since = time.time() - hours * 3600
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT subject_id,
+                          subject_label,
+                          behavior,
+                          MIN(timestamp) AS first_ts,
+                          MAX(timestamp) AS last_ts,
+                          COUNT(*) AS event_count,
+                          AVG(confidence) AS avg_confidence,
+                          -- Pick a representative description and zone
+                          -- (the most recent for this group).
+                          (SELECT description FROM behavior_log AS b2
+                           WHERE b2.subject_id = behavior_log.subject_id
+                             AND b2.behavior = behavior_log.behavior
+                             AND b2.timestamp > ?
+                           ORDER BY b2.timestamp DESC LIMIT 1) AS description,
+                          (SELECT zone FROM behavior_log AS b3
+                           WHERE b3.subject_id = behavior_log.subject_id
+                             AND b3.behavior = behavior_log.behavior
+                             AND b3.timestamp > ?
+                           ORDER BY b3.timestamp DESC LIMIT 1) AS zone
+                   FROM behavior_log
+                   WHERE timestamp > ?
+                   GROUP BY subject_id, behavior
+                   ORDER BY (MAX(timestamp) - MIN(timestamp)) DESC""",
+                (since, since, since),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_recent_temps(self, hours: float = 12.0) -> List[dict]:
         since = time.time() - hours * 3600
         with self._conn() as conn:

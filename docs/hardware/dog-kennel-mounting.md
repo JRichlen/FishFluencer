@@ -81,25 +81,40 @@ sheath is dog-tooth-resistant but the cable jacket is not.
 For an outdoor kennel, the existing wiring still works but cable
 routing needs more thought — see [`assembly.md`](assembly.md) §6.
 
-## Optional: heat-stroke alert thresholds
+## Heat-stroke alerts (Tier 2)
 
-Out of scope for Tier 1, but worth flagging. If you want temperature
-alerts, the cleanest place to add them is in `_read_temperature` in
-`src/main.py`:
+Heat-stroke alerting is built in. Enable it in `config/default.yaml`:
 
-```python
-# Untested sketch — not in the codebase yet.
-if reading.fahrenheit > 85:
-    self.error_pusher.report_error(
-        RuntimeError(f"High kennel temp: {reading.fahrenheit}°F"),
-        context={"phase": "thermal_alert"},
-    )
+```yaml
+heat_stroke_alert:
+  enabled: true
+  threshold_f: 85.0       # tune for your dog and breed
+  cooldown_minutes: 30    # don't re-alert more than once per N min
 ```
 
-This would post a high-severity event to GitHub via the existing
-error-pusher channel — not ideal for "your dog is hot, check now"
-latency, but is a foundation. A real implementation should push to
-a notification service. Out of scope for this PR.
+When the DS18B20 reads at or above `threshold_f`, the orchestrator
+bypasses the periodic 12-hour summary and generates a focused
+alert post **immediately**. The post goes through the same
+publisher path as scheduled posts — so it lands on whatever
+platforms you've configured, with whatever credentials you've set
+(or via `DryRunPublisher` to the logs if you haven't).
+
+The `cooldown_minutes` field rate-limits repeat alerts during a
+sustained heat event so the social feed doesn't fill up with the
+same alert every 5 minutes.
+
+Caveats:
+
+- **This is not a substitute for a real welfare alarm.** Twitter /
+  Bluesky aren't pager-grade notifications. If a dog being too hot
+  is a serious safety concern, also wire up a dedicated push
+  channel (Pushover, SMS, etc.) — the framework doesn't ship with
+  one but the alert hook in `src/main.py:_check_heat_stroke` is
+  where you'd add it.
+- The threshold default (85°F / 29°C) is conservative for most
+  breeds; tune for your dog's tolerance and your local climate.
+- The DS18B20 reads ambient air, not core body temperature, so a
+  shaded probe and a hot dog can disagree.
 
 ## Detection-class whitelist
 

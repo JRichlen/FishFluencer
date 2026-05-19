@@ -95,3 +95,18 @@ ota:
   branch: "main"
   service_name: "fishfluencer.service"
   post_update_script: "scripts/install_deps.sh"
+
+# Heat-stroke alert. When `enabled: true` and the DS18B20 ambient
+# reading meets or exceeds `threshold_f`, the orchestrator generates
+# an immediate (non-scheduled) alert post. `cooldown_minutes` rate-
+# limits re-alerts to avoid spamming the feed during a sustained
+# heat event. Primarily useful in dog mode, but works for any
+# subject — set higher thresholds for tropical fish tanks.
+heat_stroke_alert:
+  enabled: false
+  threshold_f: 85.0
+  cooldown_minutes: 30
+
+# Tracker state file — when set, subject IDs and last-seen positions
+# persist across restarts. Set to null to disable persistence.
+tracker_state_path: "data/tracker_state.json"

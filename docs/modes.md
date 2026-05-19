@@ -65,6 +65,32 @@ subject_classes: ["fish", "betta", "goldfish", "tetra"]
 Empty list (default) accepts every detection — useful while bringing
 up the system or running on a fine-tuned single-class model.
 
+## Tier 2 features (current)
+
+| Feature | Where it lives |
+|---|---|
+| Posture classification (`LYING_DOWN` / `SITTING` / `STANDING`) for dog mode | `src/inference/behavior.py` — `_classify` posture branch, gated by bbox aspect ratio thresholds |
+| Span-based event emission (one event per behavior transition + one checkpoint every 60s, instead of one per frame) | `src/inference/behavior.py` — `BehaviorAnalyzer` keeps per-subject state |
+| Heat-stroke alert posts | `src/main.py` — `_check_heat_stroke` / `_generate_alert_post`, gated by `heat_stroke_alert` config |
+| Subject identity persistence across restarts | `src/inference/tracker.py` — `CentroidTracker.save_state` / `_load_state`, JSON state file |
+| Humanized duration in summaries ("paced for ~12 min") | `src/data/summarizer.py` — `_estimate_duration` from event timestamps |
+
+Tunable knobs in `config/default.yaml`:
+
+```yaml
+behavior:
+  checkpoint_interval_seconds: 60.0   # how often a sustained behavior re-emits
+  posture_aspect_lying: 1.4           # bbox W/H above which a still dog is LYING_DOWN
+  posture_aspect_sitting: 0.9         # bbox W/H below which a still dog is STANDING
+
+heat_stroke_alert:
+  enabled: false
+  threshold_f: 85.0
+  cooldown_minutes: 30
+
+tracker_state_path: "data/tracker_state.json"   # null to disable persistence
+```
+
 ## Switching modes on a live device
 
 Edit `config/default.yaml`, change `mode`, and restart:
@@ -84,26 +110,47 @@ either mode also runs the one-time column rename
 
 ## What dog mode is NOT (be honest about limitations)
 
-This is **Tier 1** dog support — behavior is inferred from centroid
-position and speed only. That gives you:
+This is **Tier 2** dog support. We have:
 
-- "Rex is pacing at the kennel door" — yes
+- "Rex is pacing at the kennel door" (with stress-indicator phrasing
+  in the prompt) — yes
 - "Rex is running" — yes
-- "Rex is lying still" — yes
-- "Rex is in the upper third of frame" — yes
+- "Rex is lying down" vs "sitting" vs "standing" — yes, derived from
+  bbox aspect ratio. **Requires a side-mounted camera** — a top-down
+  view sees a roughly square bbox regardless of posture and degrades
+  to undifferentiated `SITTING`.
+- Heat-stroke alerting — yes, threshold-based, with cooldown
+- Subject ID persistence across service restarts — yes, position-
+  and-label-based "poor-man's re-ID" via a JSON state file
+- Behavior duration in human-friendly form ("Rex lay down for
+  ~25 min") — yes, derived from span emission timestamps
 
-It does **not** give you:
+What it still does **not** give you:
 
+- True dog pose estimation. We deliberately do not add a second
+  Edge TPU model because there is no widely-available, Edge-TPU-
+  compiled pose model trained on dogs. Human PoseNet on a dog
+  produces nonsense keypoints. Aspect-ratio posture is the honest
+  signal we can produce from the existing detector.
 - "Rex is sleeping" vs "Rex is lying still and watchful" — requires
-  pose / eye-state detection
-- "Rex is panting" — requires audio
-- "Rex is eating" — requires multi-object reasoning (dog + food bowl)
-- Per-dog identity persistence across restarts — the tracker re-IDs
-  every start; if you have two dogs, fine-tune a model with
-  per-dog classes (e.g. `dog_rex`, `dog_daisy`)
+  eye-state / head-pose, requires pose estimation that doesn't
+  exist yet for Edge TPU.
+- "Rex is panting" — requires audio + a separate model.
+- "Rex is eating" — requires multi-object reasoning (dog + food
+  bowl); the framework supports detecting both classes, but no
+  scene-relationship rules are implemented.
+- Per-dog identity from appearance — the position-based rehydration
+  works well for "one dog in a kennel" and degrades for "two dogs
+  that rotate through the same favorite corner." For multi-dog
+  reliability, fine-tune a detector with per-dog classes (e.g.
+  `dog_rex`, `dog_daisy`).
 
-For a real welfare-monitoring product you'd want Tier 2 — pose
-estimation alongside object detection. See the discussion in PR #3.
+For Tier 3 (real welfare monitoring), the missing pieces are a
+dog-trained pose model on Edge TPU (would have to be trained and
+compiled in-house), audio capture + classification (panting,
+barking, whining), and per-instance appearance embeddings. None of
+those are blocked by FishFluencer's architecture — they're all
+additive — but they're individually substantial pieces of work.
 
 ## Where to mount the camera for dog mode
 
