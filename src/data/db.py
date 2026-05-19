@@ -1,6 +1,11 @@
 """
 SQLite database for behavior logs, temperature readings, and post history.
 All data stays on-device.
+
+Schema migrations: historical builds named the subject columns
+`fish_id`/`fish_label`. The current schema uses `subject_id`/`subject_label`
+to support both fish and dog modes. `_migrate_legacy()` runs on every
+open and is a no-op once the rename is applied.
 """
 
 import logging
@@ -16,8 +21,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS behavior_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp REAL NOT NULL,
-    fish_id INTEGER NOT NULL,
-    fish_label TEXT NOT NULL,
+    subject_id INTEGER NOT NULL,
+    subject_label TEXT NOT NULL,
     behavior TEXT NOT NULL,
     zone TEXT NOT NULL,
     confidence REAL NOT NULL,
@@ -64,7 +69,37 @@ class FishDB:
 
     def _init_schema(self):
         with self._conn() as conn:
+            self._migrate_legacy(conn)
             conn.executescript(SCHEMA)
+
+    def _migrate_legacy(self, conn) -> None:
+        """Rename `fish_id`/`fish_label` to `subject_id`/`subject_label`
+        on a pre-existing legacy database. Safe to run repeatedly.
+
+        Requires SQLite ≥ 3.25 (RENAME COLUMN). Mendel and modern Linux
+        distros all ship newer than that.
+        """
+        try:
+            cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(behavior_log)").fetchall()
+            }
+        except sqlite3.OperationalError:
+            # behavior_log doesn't exist yet — fresh install, no migration.
+            return
+
+        if "fish_id" in cols:
+            logger.info(
+                "Migrating behavior_log: rename fish_id → subject_id, "
+                "fish_label → subject_label"
+            )
+            conn.execute(
+                "ALTER TABLE behavior_log RENAME COLUMN fish_id TO subject_id"
+            )
+        if "fish_label" in cols:
+            conn.execute(
+                "ALTER TABLE behavior_log RENAME COLUMN fish_label TO subject_label"
+            )
 
     @contextmanager
     def _conn(self):
@@ -82,11 +117,11 @@ class FishDB:
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO behavior_log
-                   (timestamp, fish_id, fish_label, behavior, zone,
+                   (timestamp, subject_id, subject_label, behavior, zone,
                     confidence, description, duration_frames)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    time.time(), event.fish_id, event.fish_label,
+                    time.time(), event.subject_id, event.subject_label,
                     event.behavior.value, event.zone, event.confidence,
                     event.description, event.duration_frames,
                 ),
@@ -142,12 +177,12 @@ class FishDB:
         since = time.time() - hours * 3600
         with self._conn() as conn:
             rows = conn.execute(
-                """SELECT fish_label, behavior, zone, description,
+                """SELECT subject_label, behavior, zone, description,
                           COUNT(*) AS event_count,
                           AVG(confidence) AS avg_confidence
                    FROM behavior_log
                    WHERE timestamp > ?
-                   GROUP BY fish_label, behavior
+                   GROUP BY subject_label, behavior
                    ORDER BY event_count DESC""",
                 (since,),
             ).fetchall()

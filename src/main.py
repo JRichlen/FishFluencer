@@ -46,27 +46,47 @@ class FishFluencer:
         if schedules_path.exists():
             self.config.update(load_config(schedules_path))
 
-        profiles_path = config_dir / "fish_profiles.yaml"
-        self.fish_profiles = (
+        self.mode = self.config.get("mode", "fish")
+        if self.mode not in ("fish", "dog"):
+            raise ValueError(
+                f"Unknown mode {self.mode!r} in {config_path}. "
+                "Must be 'fish' or 'dog'."
+            )
+
+        # Pick the right persona file for the active mode.
+        profile_filename = (
+            "dog_profiles.yaml" if self.mode == "dog" else "fish_profiles.yaml"
+        )
+        profiles_path = config_dir / profile_filename
+        self.profiles = (
             load_fish_profiles(profiles_path)
             if profiles_path.exists() else {}
         )
+
+        # Optional detection-label whitelist (drops stray classes from
+        # the multi-class COCO base model).
+        self.subject_classes = set(self.config.get("subject_classes") or [])
 
         self.db = FishDB(self.config.get("db_path", "data/fishfluencer.db"))
         self.camera = FishCamera(**self.config.get("camera", {}))
         self.detector = self._init_detector()
         self.tracker = CentroidTracker(**self.config.get("tracker", {}))
-        self.analyzer = BehaviorAnalyzer(**self.config.get("behavior", {}))
+        self.analyzer = BehaviorAnalyzer(
+            **self.config.get("behavior", {}), mode=self.mode
+        )
         self.temp_sensor = self._init_temp_sensor()
         self.image_mgr = ImageManager(**self.config.get("images", {}))
-        self.summarizer = BehaviorSummarizer(self.db, self.fish_profiles)
+        self.summarizer = BehaviorSummarizer(
+            self.db, self.profiles, mode=self.mode
+        )
         self.post_gen = PostGenerator(
             api_key=os.environ.get(
                 "ANTHROPIC_API_KEY",
                 self.config.get("anthropic_api_key", ""),
             ),
-            fish_profiles=self.fish_profiles,
+            profiles=self.profiles,
             model=self.config.get("anthropic_model", "claude-sonnet-4-6"),
+            mode=self.mode,
         )
         self.error_pusher = ErrorLogPusher(
             **self.config.get("error_reporting", {})
@@ -159,6 +179,13 @@ class FishFluencer:
             self.camera.close()
             logger.info("=== FishFluencer stopped ===")
 
+    def _filter_detections(self, detections: list) -> list:
+        """Drop detections whose label isn't in the configured whitelist.
+        Empty whitelist = pass-through (default)."""
+        if not self.subject_classes:
+            return detections
+        return [d for d in detections if d.label in self.subject_classes]
+
     def _process_frame(self):
         if self.detector is None:
             time.sleep(0.5)
@@ -167,7 +194,7 @@ class FishFluencer:
             result = self.camera.capture_frame()
         except RuntimeError:
             return
-        detections = self.detector.detect(result.frame)
+        detections = self._filter_detections(self.detector.detect(result.frame))
         tracked = self.tracker.update(detections)
         behaviors = self.analyzer.analyze(tracked)
         for event in behaviors:
@@ -181,7 +208,7 @@ class FishFluencer:
         except RuntimeError as e:
             logger.warning("Snapshot skipped: %s", e)
             return
-        detections = self.detector.detect(result.frame)
+        detections = self._filter_detections(self.detector.detect(result.frame))
         description = self.image_mgr.describe_frame(result.frame, detections)
         filepath = self.camera.save_frame(
             result, self.image_mgr.storage_dir, prefix="scheduled"
@@ -208,13 +235,13 @@ class FishFluencer:
             logger.info("Summary generated (%d chars)", len(summary))
 
             platforms = self.config.get("platforms", ["twitter"])
-            fish_name = self.config.get("primary_poster", None)
+            character_name = self.config.get("primary_poster", None)
 
             for platform in platforms:
                 post = self.post_gen.generate_post(
                     summary=summary,
                     platform=platform,
-                    character_name=fish_name,
+                    character_name=character_name,
                 )
                 logger.info("[%s] Post: %s...", platform, post[:100])
 

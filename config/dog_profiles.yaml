@@ -1,0 +1,38 @@
+# Dog persona profiles.
+# Map a detection label (the class name produced by the Edge TPU model
+# — e.g. COCO's `dog` class) to a named character with personality +
+# quirks. The summarizer substitutes these into the text sent to
+# Claude. Keys must match a label string returned by the detector.
+
+dog:
+  name: "Rex"
+  species: "rescue mutt"
+  personality: "earnest, easily distracted, mildly anxious"
+  quirks: >
+    refers to walks as 'the great outside', deeply suspicious of the
+    vacuum, claims he's never seen the mailman before in his life
+    (every day), narrates squirrels as 'forbidden hopping snacks'
+
+# A second optional persona if you have multiple dogs in the kennel
+# and your detector distinguishes them by label. Default labels from
+# COCO won't — both will register as `dog` — so this slot is mostly
+# useful if you've fine-tuned a model with per-dog classes like
+# `dog_rex` / `dog_daisy`.
+dog_daisy:
+  name: "Daisy"
+  species: "border collie"
+  personality: "intensely focused, opinionated, slightly bossy"
+  quirks: >
+    treats the kennel door as a member of the household, herds
+    invisible sheep at 3pm, has strong opinions about the schedule
+
+# Catch-all for non-dog COCO classes the model might fire on (cats,
+# people, etc.) — the dog-mode prompt is dog-themed but the persona
+# system will still substitute these if the detector reports them.
+cat:
+  name: "The Cat"
+  species: "cat (unwanted kennel intruder)"
+  personality: "smug, uninvited, here to taunt the dog"
+  quirks: >
+    appears on the windowsill outside the kennel for no reason,
+    refuses to engage with any of it

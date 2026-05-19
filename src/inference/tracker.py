@@ -1,9 +1,9 @@
 """
-Multi-object centroid tracker for persistent fish identity across frames.
+Multi-object centroid tracker for persistent subject identity across frames.
 
-Assigns stable IDs to detected fish so we can track individual movement
-patterns over time. Upgrade path: swap for DeepSORT if you need
-re-identification after occlusion.
+Assigns stable IDs to detected subjects (fish or dogs) so we can track
+individual movement patterns over time. Upgrade path: swap for DeepSORT
+if you need re-identification after occlusion.
 """
 
 import logging
@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TrackedFish:
-    fish_id: int
+class TrackedSubject:
+    subject_id: int
     label: str
     center: Tuple[int, int]
     bbox: Tuple[int, int, int, int]
@@ -36,15 +36,6 @@ class TrackedFish:
             dist += math.hypot(x2 - x1, y2 - y1)
         return dist
 
-    @property
-    def zone(self) -> str:
-        _, y = self.center
-        if y < 360:
-            return "surface"
-        if y < 720:
-            return "midwater"
-        return "bottom"
-
 
 class CentroidTracker:
     def __init__(
@@ -58,30 +49,30 @@ class CentroidTracker:
         self.trajectory_length = trajectory_length
 
         self._next_id = 0
-        self._tracked: "OrderedDict[int, TrackedFish]" = OrderedDict()
+        self._tracked: "OrderedDict[int, TrackedSubject]" = OrderedDict()
 
     @property
-    def active_fish(self) -> List[TrackedFish]:
+    def active_subjects(self) -> List[TrackedSubject]:
         return list(self._tracked.values())
 
-    def update(self, detections: list) -> List[TrackedFish]:
+    def update(self, detections: list) -> List[TrackedSubject]:
         if not detections:
             to_remove = []
-            for fish_id, fish in self._tracked.items():
-                fish.frames_missing += 1
-                if fish.frames_missing > self.max_missing_frames:
-                    to_remove.append(fish_id)
-            for fid in to_remove:
-                logger.debug("Fish #%d deregistered (missing too long)", fid)
-                del self._tracked[fid]
-            return self.active_fish
+            for sid, sub in self._tracked.items():
+                sub.frames_missing += 1
+                if sub.frames_missing > self.max_missing_frames:
+                    to_remove.append(sid)
+            for sid in to_remove:
+                logger.debug("Subject #%d deregistered (missing too long)", sid)
+                del self._tracked[sid]
+            return self.active_subjects
 
         det_centers = [d.center for d in detections]
 
         if not self._tracked:
             for det in detections:
                 self._register(det)
-            return self.active_fish
+            return self.active_subjects
 
         track_ids = list(self._tracked.keys())
         track_centers = [self._tracked[tid].center for tid in track_ids]
@@ -105,15 +96,15 @@ class CentroidTracker:
                 continue
             if dist > self.max_distance:
                 continue
-            fish = self._tracked[track_ids[ti]]
-            fish.center = detections[di].center
-            fish.bbox = detections[di].bbox
-            fish.label = detections[di].label
-            fish.frames_tracked += 1
-            fish.frames_missing = 0
-            fish.trajectory.append(fish.center)
-            if len(fish.trajectory) > self.trajectory_length:
-                fish.trajectory.pop(0)
+            sub = self._tracked[track_ids[ti]]
+            sub.center = detections[di].center
+            sub.bbox = detections[di].bbox
+            sub.label = detections[di].label
+            sub.frames_tracked += 1
+            sub.frames_missing = 0
+            sub.trajectory.append(sub.center)
+            if len(sub.trajectory) > self.trajectory_length:
+                sub.trajectory.pop(0)
 
             matched_tracks.add(ti)
             matched_dets.add(di)
@@ -123,8 +114,8 @@ class CentroidTracker:
                 self._tracked[track_ids[ti]].frames_missing += 1
 
         to_remove = [
-            tid for tid, fish in self._tracked.items()
-            if fish.frames_missing > self.max_missing_frames
+            tid for tid, sub in self._tracked.items()
+            if sub.frames_missing > self.max_missing_frames
         ]
         for tid in to_remove:
             del self._tracked[tid]
@@ -133,16 +124,18 @@ class CentroidTracker:
             if di not in matched_dets:
                 self._register(detections[di])
 
-        return self.active_fish
+        return self.active_subjects
 
     def _register(self, detection) -> None:
-        fish = TrackedFish(
-            fish_id=self._next_id,
+        sub = TrackedSubject(
+            subject_id=self._next_id,
             label=detection.label,
             center=detection.center,
             bbox=detection.bbox,
             trajectory=[detection.center],
         )
-        self._tracked[self._next_id] = fish
-        logger.debug("New fish registered: #%d (%s)", self._next_id, detection.label)
+        self._tracked[self._next_id] = sub
+        logger.debug(
+            "New subject registered: #%d (%s)", self._next_id, detection.label
+        )
         self._next_id += 1

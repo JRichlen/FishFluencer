@@ -23,12 +23,18 @@ def det(label, cx, cy):
     )
 
 
-def test_register_new_fish():
+def test_register_new_subject():
     tracker = CentroidTracker()
-    fish = tracker.update([det("fish", 100, 100)])
-    assert len(fish) == 1
-    assert fish[0].fish_id == 0
-    assert fish[0].label == "fish"
+    subs = tracker.update([det("fish", 100, 100)])
+    assert len(subs) == 1
+    assert subs[0].subject_id == 0
+    assert subs[0].label == "fish"
+
+
+def test_register_works_for_dog_label():
+    tracker = CentroidTracker()
+    subs = tracker.update([det("dog", 500, 500)])
+    assert subs[0].label == "dog"
 
 
 def test_track_movement_preserves_id():
@@ -37,7 +43,7 @@ def test_track_movement_preserves_id():
     tracker.update([det("fish", 120, 110)])
     tracked = tracker.update([det("fish", 140, 120)])
     assert len(tracked) == 1
-    assert tracked[0].fish_id == 0
+    assert tracked[0].subject_id == 0
     assert tracked[0].frames_tracked == 2
 
 
@@ -47,10 +53,10 @@ def test_deregister_after_missing():
     tracker.update([])
     tracker.update([])
     tracker.update([])
-    assert tracker.active_fish == []
+    assert tracker.active_subjects == []
 
 
-def test_separate_fish_get_separate_ids():
+def test_separate_subjects_get_separate_ids():
     tracker = CentroidTracker(max_distance=80.0)
     tracker.update([det("fish", 100, 100), det("fish", 800, 100)])
-    assert len({f.fish_id for f in tracker.active_fish}) == 2
+    assert len({s.subject_id for s in tracker.active_subjects}) == 2

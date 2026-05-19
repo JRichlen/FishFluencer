@@ -11,19 +11,52 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+# Per-mode wording for the summary header and the temperature line.
+_MODE_VOCAB = {
+    "fish": {
+        "title": "Fish Tank Status Report",
+        "activity_header": "Fish Activity",
+        "empty_phrase": "No fish activity detected in this period.",
+        "temp_label": "Water temperature",
+    },
+    "dog": {
+        "title": "Kennel Status Report",
+        "activity_header": "Kennel Activity",
+        "empty_phrase": "No subject activity detected in this period.",
+        "temp_label": "Ambient temperature",
+    },
+}
+
 
 class BehaviorSummarizer:
-    def __init__(self, db, fish_profiles: dict):
+    """Build the text summary sent to Claude.
+
+    Args:
+        db: a FishDB.
+        profiles: mapping of detection label → persona dict
+            (``name``/``species``/``personality``/``quirks``).
+        mode: ``"fish"`` or ``"dog"`` — selects the vocabulary used
+            for the title, activity header, and temperature label.
+    """
+
+    def __init__(self, db, profiles: dict, mode: str = "fish"):
+        if mode not in _MODE_VOCAB:
+            raise ValueError(
+                f"Unknown mode {mode!r}. Must be one of {list(_MODE_VOCAB)}."
+            )
         self.db = db
-        self.profiles = fish_profiles
+        self.profiles = profiles
+        self.mode = mode
+        self._vocab = _MODE_VOCAB[mode]
 
     def generate_summary(self, hours: float = 12.0) -> str:
         behaviors = self.db.get_behavior_summary(hours=hours)
         temps = self.db.get_recent_temps(hours=hours)
         now = datetime.now()
+        vocab = self._vocab
 
         lines = [
-            "=== Fish Tank Status Report ===",
+            f"=== {vocab['title']} ===",
             f"Generated: {now.strftime('%A, %B %d at %I:%M %p')}",
             f"Reporting window: last {hours:.0f} hours",
             "",
@@ -32,17 +65,17 @@ class BehaviorSummarizer:
         if temps and temps[0]["readings"]:
             t = temps[0]
             lines.append(
-                f"Water temperature: {t['avg_f']:.1f}°F "
+                f"{vocab['temp_label']}: {t['avg_f']:.1f}°F "
                 f"(range: {t['min_f']:.1f}–{t['max_f']:.1f}°F)"
             )
             lines.append("")
 
         if not behaviors:
-            lines.append("No fish activity detected in this period.")
+            lines.append(vocab["empty_phrase"])
         else:
-            lines.append("=== Fish Activity ===")
+            lines.append(f"=== {vocab['activity_header']} ===")
             for b in behaviors:
-                label = b["fish_label"]
+                label = b["subject_label"]
                 profile = self.profiles.get(label, {})
                 name = profile.get("name", label.title())
                 personality = profile.get("personality", "mysterious")

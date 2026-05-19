@@ -1,5 +1,17 @@
 # === FishFluencer Configuration ===
 
+# Subject mode — `fish` (default) or `dog`. Picks the behavior
+# vocabulary, zone labels, temperature phrasing, persona profiles
+# file, and Claude prompt template. See docs/modes.md.
+mode: "fish"
+
+# Whitelist of detection labels to act on. Empty list = accept every
+# label the model produces. Useful when running the multi-class COCO
+# base model in dog mode — set to `["dog"]` to ignore stray cat /
+# person / fish detections, or `["fish", "betta", "goldfish", "tetra"]`
+# in fish mode for the same reason.
+subject_classes: []
+
 # Anthropic API (text-only calls — never sends images)
 anthropic_api_key: "${ANTHROPIC_API_KEY}"
 anthropic_model: "claude-sonnet-4-6"
@@ -55,10 +67,11 @@ post_times:
 platforms:
   - twitter
 
-# Fish character who writes the posts.
-# Must match a top-level key in config/fish_profiles.yaml (e.g.
-# `betta`, `goldfish`, `tetra`, `fish`) — PostGenerator looks the
-# character up by profile key, not by display name.
+# Character who writes the posts.
+# Must match a top-level key in the active profiles file
+# (config/fish_profiles.yaml in fish mode, config/dog_profiles.yaml
+# in dog mode). PostGenerator looks the character up by profile key,
+# not by display name.
 primary_poster: "betta"
 
 # Database
