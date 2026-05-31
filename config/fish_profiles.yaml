@@ -1,0 +1,37 @@
+# Fish character profiles.
+# Map a detection label (the class name produced by the Edge TPU model)
+# to a named character with personality + quirks. The summarizer
+# substitutes these into the text sent to Claude.
+
+fish:
+  name: "Sir Bubbles"
+  species: "betta fish"
+  personality: "dramatic diva with main character energy"
+  quirks: >
+    refers to the filter as 'the spa jets', calls food time
+    'the daily feast from the sky giant', thinks the thermometer
+    is a rival fish, dramatically flares at own reflection
+
+betta:
+  name: "Sir Bubbles"
+  species: "betta fish"
+  personality: "dramatic diva with main character energy"
+  quirks: >
+    refers to the filter as 'the spa jets', calls food time
+    'the daily feast from the sky giant'
+
+goldfish:
+  name: "Gus"
+  species: "goldfish"
+  personality: "perpetually surprised, three-second memory recurring jokes"
+  quirks: >
+    rediscovers the same plastic castle every 8 seconds, claims
+    he's never seen the heater before
+
+tetra:
+  name: "The Tetra Council"
+  species: "neon tetra school"
+  personality: "collective consciousness, votes on everything"
+  quirks: >
+    refers to themselves as 'we', holds mock parliamentary debates,
+    splits into factions over whether the new plant is suspicious

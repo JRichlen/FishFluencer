@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>FishFluencer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1220;
+        --panel: #111a2e;
+        --accent: #5eead4;
+        --muted: #94a3b8;
+        --text: #e2e8f0;
+        font-family: -apple-system, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { margin: 0 0 4px 0; font-size: 28px; }
+      h2 { font-size: 16px; color: var(--muted); margin: 24px 0 8px 0;
+           text-transform: uppercase; letter-spacing: 0.08em; }
+      .subtitle { color: var(--muted); margin: 0 0 24px 0; }
+      .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+      .card {
+        background: var(--panel); border-radius: 12px; padding: 16px;
+      }
+      .stat { font-size: 32px; font-weight: 600; color: var(--accent); }
+      .label { font-size: 12px; color: var(--muted); text-transform: uppercase;
+               letter-spacing: 0.05em; margin-top: 4px; }
+      .posts { background: var(--panel); border-radius: 12px; padding: 16px; }
+      .post {
+        padding: 12px 0; border-bottom: 1px solid #1e293b;
+      }
+      .post:last-child { border-bottom: none; }
+      .post-meta { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+      .footer { text-align: center; color: var(--muted); font-size: 12px;
+                margin-top: 32px; }
+    </style>
+  </head>
+  <body>
+    <h1>FishFluencer</h1>
+    <p class="subtitle">on-device fish surveillance — text-only social posts</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="stat" id="temp">—</div>
+        <div class="label">Water temp (°F)</div>
+      </div>
+      <div class="card">
+        <div class="stat" id="behaviors">—</div>
+        <div class="label">Behavior events (24h)</div>
+      </div>
+      <div class="card">
+        <div class="stat" id="posts-count">—</div>
+        <div class="label">Posts published</div>
+      </div>
+      <div class="card">
+        <div class="stat" id="snapshots">—</div>
+        <div class="label">Snapshots held locally</div>
+      </div>
+    </div>
+
+    <h2>Recent posts</h2>
+    <div class="posts" id="posts-list">loading…</div>
+
+    <div class="footer">Privacy: no images leave this device.</div>
+
+    <script>
+      async function refresh() {
+        try {
+          const stats = await fetch('/api/stats').then(r => r.json());
+          document.getElementById('temp').textContent =
+            stats.last_temp_f != null ? stats.last_temp_f.toFixed(1) : '—';
+          document.getElementById('behaviors').textContent = stats.behaviors_24h;
+          document.getElementById('posts-count').textContent = stats.posts_total;
+          document.getElementById('snapshots').textContent = stats.snapshots_current;
+
+          const posts = await fetch('/api/posts').then(r => r.json());
+          const list = document.getElementById('posts-list');
+          if (!posts.length) {
+            list.textContent = 'No posts yet.';
+          } else {
+            list.innerHTML = posts.map(p => `
+              <div class="post">
+                <div class="post-meta">${p.timestamp_human} · ${p.platform} · ${p.status}</div>
+                <div>${p.content.replace(/[<>]/g, c => ({'<':'&lt;','>':'&gt;'}[c]))}</div>
+              </div>
+            `).join('');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      refresh();
+      setInterval(refresh, 10000);
+    </script>
+  </body>
+</html>

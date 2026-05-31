@@ -1,0 +1,12 @@
+[Unit]
+Description=FishFluencer GitHub Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mendel
+WorkingDirectory=/opt/fishfluencer
+ExecStart=/opt/fishfluencer/.venv/bin/python -c "from src.sync.github_sync import GitHubSyncAgent; GitHubSyncAgent().sync()"
+StandardOutput=journal
+StandardError=journal

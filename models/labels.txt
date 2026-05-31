@@ -1,0 +1,9 @@
+0 fish
+1 betta
+2 goldfish
+3 tetra
+4 plant
+5 decoration
+6 filter
+7 heater
+8 food

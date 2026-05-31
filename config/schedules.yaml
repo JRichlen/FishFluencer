@@ -1,0 +1,16 @@
+# Schedule overrides. Anything set here overrides the values in
+# default.yaml. Useful when you want to tune posting cadence without
+# touching the main config.
+
+post_times:
+  - "09:00"
+  - "17:00"
+
+# Snapshot cadence (minutes between scheduled snapshots)
+snapshot_interval_minutes: 15
+
+# Temperature reading cadence (minutes)
+temperature_interval_minutes: 5
+
+# Image purge cadence (minutes — also enforced by the systemd timer)
+purge_interval_minutes: 60

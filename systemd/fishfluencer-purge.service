@@ -1,0 +1,11 @@
+[Unit]
+Description=FishFluencer Image Purge
+After=fishfluencer.service
+
+[Service]
+Type=oneshot
+User=mendel
+WorkingDirectory=/opt/fishfluencer
+ExecStart=/opt/fishfluencer/.venv/bin/python -c "from src.utils.config import load_config; from src.data.db import FishDB; from src.data.image_manager import ImageManager; cfg = load_config('config/default.yaml'); db = FishDB(cfg.get('db_path', 'data/fishfluencer.db')); mgr = ImageManager(**cfg.get('images', {})); mgr.purge_expired(db); mgr.enforce_storage_limit()"
+StandardOutput=journal
+StandardError=journal
